@@ -999,9 +999,13 @@ function zeigeLogin() {
     $('lgErstText').textContent = laedt ? 'Benutzer werden aus Dropbox geladen …'
       : altU0 ? 'Neu: Die App hat jetzt Benutzer mit PIN. Lege für dich eine PIN fest – deine bisherigen Stunden bleiben erhalten.'
       : lokal.dbx ? 'Noch kein Benutzer angelegt. Lege dich als ersten Benutzer an – du bist dann Admin und kannst weitere Benutzer anlegen.'
-      : 'Wird die App schon auf einem anderen Gerät benutzt? Dann zuerst unten „Dropbox verbinden“ – die Benutzer werden übernommen. Sonst hier den ersten Benutzer anlegen.';
+      : 'Hast du schon einen Benutzer (z. B. auf dem Handy)? Dann zuerst mit Dropbox verbinden – danach erscheint dein Name und du meldest dich mit deiner PIN an.';
+    // Ohne Dropbox ist „verbinden“ fast immer richtig; „neu anfangen“ nur, wenn es noch niemanden gibt
+    const nurDbx = !lokal.dbx && !altU0;
+    $('lgErstDbx').parentElement.hidden = !nurDbx;
     $('lgErstKnopf').hidden = !!laedt;
-    $('lgErstKnopf').textContent = altU0 ? 'PIN festlegen' : 'Ersten Benutzer anlegen';
+    $('lgErstKnopf').className = nurDbx ? '' : 'primary';
+    $('lgErstKnopf').textContent = altU0 ? 'PIN festlegen' : nurDbx ? 'Noch niemand angelegt: ersten Benutzer anlegen' : 'Ersten Benutzer anlegen';
   }
   $('lgDbx').textContent = lokal.dbx ? 'Dropbox verbunden ✓' : 'Dropbox verbinden';
 }
@@ -1167,7 +1171,7 @@ function init() {
   $('lgOk').onclick = pruefeLogin;
   $('lgZurueck').onclick = () => { loginWahl = null; zeigeLogin(); };
   $('lgErstKnopf').onclick = ersterBenutzer;
-  $('lgDbx').onclick = () => { ladeEinstellungen(); zeige('settings', true); };
+  $('lgDbx').onclick = $('lgErstDbx').onclick = () => { ladeEinstellungen(); zeige('settings', true); };
   $('abmelden').onclick = () => abmelden(false);
   $('pinAendern').onclick = async () => {
     const r = await pinDialog({ titel: 'Eigene PIN ändern', knopf: 'PIN ändern' });
