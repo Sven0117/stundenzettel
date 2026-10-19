@@ -35,17 +35,45 @@ const Store = {
 // data.settings = { name, email, cc, t }, data.months['JJJJ-MM'] = { baustelle, blatt, zul, t, days: { 1: { n, f, a, p25 …, u, t } } }
 // t = Zeitstempel der letzten Änderung (für den Dropbox-Abgleich: der neuere Eintrag gewinnt).
 // Ein geleerter Tag bleibt als { t } stehen, damit das Leeren auch auf den anderen Handys ankommt.
+//
+// Gerätespeicher (seit 1.5, mehrere Benutzer):
+//   { v: 2, lokal, benutzer: [{ id, name, salt, hash, admin, datei, mail, t, del }], konten: { id: { settings, months } } }
+// lokal = bleibt nur auf diesem Gerät (Dropbox-Zugang, angemeldeter Benutzer, Abgleich-Stand je Benutzer), wird nie hochgeladen.
+// Benutzer "u0" ist der Admin und besitzt die alte Datei /stundenzettel.json (Daten aus Version 1.4 und älter).
 const gespeichert = Store.load() || {};
-let data = { settings: gespeichert.settings, months: gespeichert.months || {} };
-data.settings = Object.assign({ name: 'Brückers', email: '', cc: '' }, data.settings || {});
-// lokal = bleibt nur auf diesem Handy (Dropbox-Zugang, Abgleich-Stand) und wird nie hochgeladen
-let lokal = Object.assign({ pkce: '', dbx: null, rev: null, dirty: false, letzter: 0 }, gespeichert.lokal || {});
+let lokal, benutzer, konten;
+if (gespeichert.v === 2) {
+  lokal = gespeichert.lokal || {};
+  benutzer = gespeichert.benutzer || [];
+  konten = gespeichert.konten || {};
+} else {
+  // Umstieg von 1.4: die bisherigen Daten gehören dem Admin (u0), der beim ersten Start seine PIN festlegt
+  const l = gespeichert.lokal || {};
+  lokal = { pkce: l.pkce || '', pkceCh: l.pkceCh || '', pkceM: l.pkceM || '', dbx: l.dbx || null, letzter: l.letzter || 0, meta: {} };
+  benutzer = [];
+  konten = {};
+  if (gespeichert.settings || (gespeichert.months && Object.keys(gespeichert.months).length)) {
+    konten.u0 = { settings: gespeichert.settings || {}, months: gespeichert.months || {} };
+    lokal.meta.u0 = { rev: l.rev || null, dirty: !!l.dirty };
+  }
+}
+lokal = Object.assign({ pkce: '', dbx: null, letzter: 0, meta: {}, aktiv: null, bleiben: true, bRev: null, bDirty: false }, lokal);
+let data = { settings: { name: '', email: '', cc: '' }, months: {} };   // Daten des angemeldeten Benutzers
 let aenderungen = 0;
 
-const saveLokal = () => Store.save({ settings: data.settings, months: data.months, lokal });
+// Abgleich-Stand des angemeldeten Benutzers
+const km = () => lokal.meta[lokal.aktiv] || (lokal.meta[lokal.aktiv] = { rev: null, dirty: false });
+const aktiverBenutzer = () => benutzer.find((u) => u.id === lokal.aktiv && !u.del) || null;
+const standardSettings = () => ({ name: (aktiverBenutzer() || {}).name || '', email: '', cc: '' });
+
+function saveLokal() {
+  if (lokal.aktiv) konten[lokal.aktiv] = data;
+  Store.save({ v: 2, lokal, benutzer, konten });
+}
 function save() {
+  if (!lokal.aktiv) return;
   aenderungen++;
-  lokal.dirty = true;
+  km().dirty = true;
   saveLokal();
   planeSync(3000);
 }
@@ -124,6 +152,7 @@ const gesamtBetrag = (mo) => mo.zul.reduce((a, z) => a + zulageBetrag(z), 0);
 function render() {
   const mo = monat();
   $('monat').textContent = `${MONATE[cur.m]} ${cur.y}`;
+  zeigeKopfName();
   $('baustelle').value = mo.baustelle;
   $('blatt').value = mo.blatt;
 
@@ -292,10 +321,13 @@ function wechsleTag(delta) {
 function zeige(id, an) {
   $(id).hidden = !an;
   if (!an && id === 'editor') { speichereTag(); aktTag = null; render(); }
+  if (!an && id === 'settings' && !$('login').hidden && !loginWahl) zeigeLogin();
 }
 window.onAndroidBack = function () {
+  if (!$('pinDlg').hidden) { $('pdAbbr').click(); return true; }
   if (!$('vorschau').hidden) { schliesseVorschau(); return true; }
   for (const id of ['editor', 'settings']) if (!$(id).hidden) { zeige(id, false); return true; }
+  if (!$('login').hidden && loginWahl) { loginWahl = null; zeigeLogin(); return true; }
   return false;
 };
 
@@ -539,11 +571,11 @@ function backupLaden(file) {
     try {
       const d = JSON.parse(r.result);
       if (!d || typeof d.months !== 'object') throw new Error();
-      const b = { settings: Object.assign({ name: 'Brückers', email: '', cc: '' }, d.settings || {}), months: d.months };
+      const b = { settings: Object.assign(standardSettings(), d.settings || {}), months: d.months };
       stempeln(b);
       if (!confirm(lokal.dbx
-        ? 'Backup laden? Es wird mit den Dropbox-Daten zusammengeführt (der neuere Eintrag gewinnt).'
-        : 'Backup laden? Die aktuellen Daten auf dem Handy werden dadurch ersetzt.')) return;
+        ? `Backup für ${data.settings.name || 'diesen Benutzer'} laden? Es wird mit den Dropbox-Daten zusammengeführt (der neuere Eintrag gewinnt).`
+        : `Backup für ${data.settings.name || 'diesen Benutzer'} laden? Seine aktuellen Daten auf diesem Gerät werden dadurch ersetzt.`)) return;
       data = lokal.dbx ? mischeDaten(data, b) : b;
       save();
       ladeEinstellungen();
@@ -558,6 +590,7 @@ function ladeEinstellungen() {
   $('setName').value = data.settings.name;
   $('setMail').value = data.settings.email;
   $('setCc').value = data.settings.cc;
+  zeigeBenutzerTeil();
   zeigeDropbox();
 }
 
@@ -593,7 +626,9 @@ const kanonText = (d) => JSON.stringify(kanon({ settings: d.settings, months: ec
 // ---------- Dropbox ----------
 // Gleiche Dropbox-App wie die Fremdfirmen-App (gemeinsames Konto); Datei liegt unter Apps/Fremdfirmen/
 const DROPBOX_APP_KEY = '4i9ocbg02anqwyj';   // kein Geheimnis, nur die App-Kennung
-const DBX_DATEI = '/stundenzettel.json';
+const DBX_BENUTZER = '/stundenzettel-benutzer.json';   // Benutzerliste (Namen + PIN-Prüfwerte)
+// Datei des angemeldeten Benutzers: Admin u0 = /stundenzettel.json (wie bis 1.4), sonst /stundenzettel-<id>.json
+const dbxDatei = () => ((aktiverBenutzer() || {}).datei || `/stundenzettel-${lokal.aktiv}.json`);
 
 function zufall(n) {
   const z = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
@@ -645,8 +680,9 @@ async function dbxVerbinden() {
     const j = await dbxTokenAnfrage({ grant_type: 'authorization_code', code, code_verifier: lokal.pkce });
     lokal.dbx = { refresh: j.refresh_token, access: j.access_token, exp: Date.now() + (j.expires_in || 0) * 1000 };
     lokal.pkce = ''; lokal.pkceCh = '';
-    lokal.rev = null;
-    lokal.dirty = true;
+    Object.values(lokal.meta).forEach((m) => { m.rev = null; m.dirty = true; });
+    lokal.bRev = null;
+    lokal.bDirty = benutzer.length > 0;
     saveLokal();
     $('dbxCode').value = '';
     toast('Mit Dropbox verbunden');
@@ -663,7 +699,8 @@ async function dbxVerbinden() {
 }
 function dbxTrennen() {
   if (!confirm('Dropbox-Abgleich auf diesem Handy beenden? Die Daten bleiben auf dem Handy und in der Dropbox erhalten.')) return;
-  lokal.dbx = null; lokal.rev = null; lokal.pkce = ''; lokal.pkceCh = '';
+  lokal.dbx = null; lokal.bRev = null; lokal.pkce = ''; lokal.pkceCh = '';
+  Object.values(lokal.meta).forEach((m) => { m.rev = null; });
   saveLokal();
   setzeStatus('aus');
   zeigeDropbox();
@@ -687,8 +724,8 @@ async function dbxAufruf(url, headers, body) {
     return { ok: res.ok, status: res.status, text };
   }
 }
-async function dbxRev() {
-  const r = await dbxAufruf('https://api.dropboxapi.com/2/files/get_metadata', { 'Content-Type': 'application/json' }, JSON.stringify({ path: DBX_DATEI }));
+async function dbxRev(pfad) {
+  const r = await dbxAufruf('https://api.dropboxapi.com/2/files/get_metadata', { 'Content-Type': 'application/json' }, JSON.stringify({ path: pfad }));
   return r.ok ? JSON.parse(r.text).rev : null;
 }
 async function dbxLaden(rev) {
@@ -696,8 +733,8 @@ async function dbxLaden(rev) {
   if (!r.ok) throw new Error('Datei konnte nicht geladen werden');
   return JSON.parse(r.text);
 }
-async function dbxSpeichern(text, rev) {
-  const arg = { path: DBX_DATEI, mode: rev ? { '.tag': 'update', update: rev } : 'add', autorename: false, mute: true, strict_conflict: true };
+async function dbxSpeichern(pfad, text, rev) {
+  const arg = { path: pfad, mode: rev ? { '.tag': 'update', update: rev } : 'add', autorename: false, mute: true, strict_conflict: true };
   const r = await dbxAufruf('https://content.dropboxapi.com/2/files/upload',
     { 'Dropbox-API-Arg': JSON.stringify(arg), 'Content-Type': 'application/octet-stream' }, new TextEncoder().encode(text));
   return r.ok ? JSON.parse(r.text).rev : null;   // null = anderes Handy war schneller -> nochmal abgleichen
@@ -718,34 +755,8 @@ async function sync() {
   syncLaeuft = true;
   setzeStatus('laeuft');
   try {
-    for (let runde = 0; runde < 5; runde++) {
-      const rev = await dbxRev();
-      if (rev && rev === lokal.rev && !lokal.dirty) break;            // nichts Neues, nichts zu senden
-      const fern = rev ? await dbxLaden(rev) : null;
-      const fernDaten = fern && fern.months && typeof fern.months === 'object'
-        ? { settings: Object.assign({ name: 'Brückers', email: '', cc: '' }, fern.settings || {}), months: fern.months } : null;
-      // Ab hier ohne Unterbrechung: lokalen und fernen Stand zusammenführen
-      const stand = aenderungen;
-      if (fernDaten) stempeln(fernDaten);
-      const gemischt = fernDaten ? mischeDaten(data, fernDaten) : data;
-      const gemischtText = kanonText(gemischt);
-      if (gemischtText !== kanonText(data)) {
-        data = gemischt;
-        saveLokal();
-        nachFremdAenderung();
-      }
-      if (fernDaten && gemischtText === kanonText(fernDaten)) {        // Dropbox ist schon aktuell
-        lokal.rev = rev;
-        lokal.dirty = aenderungen !== stand;
-        break;
-      }
-      const neuRev = await dbxSpeichern(JSON.stringify({ v: 1, settings: gemischt.settings, months: echteMonate(gemischt.months) }), rev);
-      if (neuRev) {
-        lokal.rev = neuRev;
-        lokal.dirty = aenderungen !== stand;
-        break;
-      }
-    }
+    await syncBenutzer();
+    if (aktiverBenutzer()) await syncKonto();
     lokal.letzter = Date.now();
     saveLokal();
     syncFehler = '';
@@ -755,8 +766,76 @@ async function sync() {
     setzeStatus('fehler');
   } finally {
     syncLaeuft = false;
-    if (syncNochmal || (lokal.dirty && !syncFehler)) { syncNochmal = false; planeSync(1500); }
+    const offen = lokal.bDirty || (lokal.aktiv && km().dirty);
+    if (syncNochmal || (offen && !syncFehler)) { syncNochmal = false; planeSync(1500); }
   }
+}
+
+// Stunden des angemeldeten Benutzers mit seiner Datei abgleichen
+async function syncKonto() {
+  const pfad = dbxDatei(), id = lokal.aktiv, meta = km();
+  for (let runde = 0; runde < 5; runde++) {
+    const rev = await dbxRev(pfad);
+    if (lokal.aktiv !== id) return;                                     // inzwischen abgemeldet
+    if (rev && rev === meta.rev && !meta.dirty) break;                  // nichts Neues, nichts zu senden
+    const fern = rev ? await dbxLaden(rev) : null;
+    if (lokal.aktiv !== id) return;
+    const fernDaten = fern && fern.months && typeof fern.months === 'object'
+      ? { settings: Object.assign(standardSettings(), fern.settings || {}), months: fern.months } : null;
+    // Ab hier ohne Unterbrechung: lokalen und fernen Stand zusammenführen
+    const stand = aenderungen;
+    if (fernDaten) stempeln(fernDaten);
+    const gemischt = fernDaten ? mischeDaten(data, fernDaten) : data;
+    const gemischtText = kanonText(gemischt);
+    if (gemischtText !== kanonText(data)) {
+      data = gemischt;
+      saveLokal();
+      nachFremdAenderung();
+    }
+    if (fernDaten && gemischtText === kanonText(fernDaten)) {          // Dropbox ist schon aktuell
+      meta.rev = rev;
+      meta.dirty = aenderungen !== stand;
+      break;
+    }
+    const neuRev = await dbxSpeichern(pfad, JSON.stringify({ v: 1, settings: gemischt.settings, months: echteMonate(gemischt.months) }), rev);
+    if (neuRev) {
+      meta.rev = neuRev;
+      meta.dirty = aenderungen !== stand;
+      break;
+    }
+  }
+}
+
+// Benutzerliste abgleichen (pro Benutzer gewinnt der neuere Zeitstempel; Löschen = del)
+function mischeBenutzer(a, b) {
+  const m = new Map();
+  [...a, ...b].forEach((u) => { const x = m.get(u.id); if (!x || (u.t || 0) > (x.t || 0)) m.set(u.id, u); });
+  return [...m.values()].sort((x, y) => (x.id === 'u0' ? -1 : y.id === 'u0' ? 1 : x.name.localeCompare(y.name, 'de')));
+}
+const benutzerText = (l) => JSON.stringify(kanon(l));
+async function syncBenutzer() {
+  for (let runde = 0; runde < 5; runde++) {
+    const rev = await dbxRev(DBX_BENUTZER);
+    if (rev && rev === lokal.bRev && !lokal.bDirty) return;
+    if (!rev && !benutzer.length) return;                              // noch niemand angelegt
+    const fern = rev ? ((await dbxLaden(rev)).liste || []) : [];
+    const gemischt = mischeBenutzer(benutzer, fern);
+    const text = benutzerText(gemischt);
+    if (text !== benutzerText(benutzer)) {
+      benutzer = gemischt;
+      saveLokal();
+      nachBenutzerAenderung();
+    }
+    if (rev && text === benutzerText(fern)) { lokal.bRev = rev; lokal.bDirty = false; return; }
+    const neuRev = await dbxSpeichern(DBX_BENUTZER, JSON.stringify({ v: 1, liste: gemischt }), rev);
+    if (neuRev) { lokal.bRev = neuRev; lokal.bDirty = false; return; }
+  }
+}
+function nachBenutzerAenderung() {
+  if (lokal.aktiv && !aktiverBenutzer()) { abmelden(true); return; }   // eigener Benutzer wurde entfernt
+  if (!$('login').hidden && !loginWahl) zeigeLogin();   // nicht, während eine PIN getippt wird
+  if (!$('settings').hidden) ladeEinstellungen();
+  if (lokal.aktiv) zeigeKopfName();
 }
 
 // Daten kamen vom anderen Handy: neu zeichnen – aber nicht, während gerade getippt wird (Tastatur würde zugehen)
@@ -781,6 +860,7 @@ function setzeStatus(s) {
   b.textContent = { ok: '✓', laeuft: '↻', fehler: '!' }[s] || '';
   b.className = 'nav sync ' + s;
   if (!$('settings').hidden) zeigeDropbox();
+  if (!$('login').hidden && !loginWahl) zeigeLogin();
 }
 function zeigeDropbox() {
   const an = !!lokal.dbx;
@@ -792,6 +872,242 @@ function zeigeDropbox() {
 }
 window.onAppResume = () => planeSync(300);
 
+// ---------- Benutzer & Anmeldung (PIN) ----------
+// Die PIN ist ein Sichtschutz zwischen Kollegen, kein Tresor: alle teilen sich dasselbe Dropbox-Konto.
+// Eigenes SHA-256 statt crypto.subtle, weil das in der Android-App (file://) fehlen kann und alle Geräte gleich rechnen müssen.
+const ror = (x, n) => (x >>> n) | (x << (32 - n));
+function sha256(text) {
+  const K = sha256.K || (sha256.K = (() => {
+    const k = [], prim = [];
+    for (let n = 2; prim.length < 64; n++) if (prim.every((p) => n % p)) { prim.push(n); k.push(((Math.cbrt(n) % 1) * 4294967296) | 0); }
+    return k;
+  })());
+  const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  const b = new TextEncoder().encode(text);
+  const len = (b.length + 72) & ~63;
+  const m = new Uint8Array(len);
+  m.set(b);
+  m[b.length] = 0x80;
+  const dv = new DataView(m.buffer);
+  dv.setUint32(len - 4, b.length * 8);
+  const w = new Array(64);
+  for (let o = 0; o < len; o += 64) {
+    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(o + i * 4);
+    for (let i = 16; i < 64; i++) {
+      const s0 = ror(w[i - 15], 7) ^ ror(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+      const s1 = ror(w[i - 2], 17) ^ ror(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+    }
+    let [a, bb, c, d, e, f, g, h] = H;
+    for (let i = 0; i < 64; i++) {
+      const t1 = (h + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i]) | 0;
+      const t2 = ((ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & bb) ^ (a & c) ^ (bb & c))) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = bb; bb = a; a = (t1 + t2) | 0;
+    }
+    [a, bb, c, d, e, f, g, h].forEach((x, i) => (H[i] = (H[i] + x) | 0));
+  }
+  return H.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('');
+}
+function pinHash(salt, pin) {
+  let h = salt + ':' + pin;
+  for (let i = 0; i < 300; i++) h = sha256(h + salt);
+  return h;
+}
+const gueltigePin = (p) => /^\d{4,8}$/.test(p);
+
+// Benutzer anlegen bzw. PIN setzen (lokal; Dropbox gleicht beim nächsten Abgleich ab)
+function neuerBenutzer(name, pin, { id, admin = false, datei = '' } = {}) {
+  id = id || 'u' + Date.now().toString(36) + zufall(4).replace(/[^a-zA-Z0-9]/g, 'x').toLowerCase();
+  const salt = zufall(16);
+  const u = { id, name, salt, hash: pinHash(salt, pin), admin, datei: datei || `/stundenzettel-${id}.json`,
+    mail: data.settings.email || '', t: Date.now() };
+  benutzer = mischeBenutzer(benutzer, [u]);
+  lokal.bDirty = true;
+  saveLokal();
+  planeSync(300);
+  return u;
+}
+function setzePin(id, pin) {
+  const u = benutzer.find((x) => x.id === id);
+  u.salt = zufall(16);
+  u.hash = pinHash(u.salt, pin);
+  u.t = Date.now();
+  lokal.bDirty = true;
+  saveLokal();
+  planeSync(300);
+}
+
+// Kleiner Dialog für Name + PIN. Ergebnis: { name, pin } oder null
+function pinDialog({ titel, mitName = false, name = '', knopf = 'Speichern', hinweis = '' }) {
+  return new Promise((fertig) => {
+    $('pdTitel').textContent = titel;
+    $('pdNameWrap').hidden = !mitName;
+    $('pdName').value = name;
+    $('pdPin').value = '';
+    $('pdPin2').value = '';
+    $('pdHinweis').textContent = hinweis;
+    $('pdOk').textContent = knopf;
+    $('pinDlg').hidden = false;
+    setTimeout(() => (mitName && !name ? $('pdName') : $('pdPin')).focus(), 50);
+    const ende = (wert) => { $('pinDlg').hidden = true; $('pdOk').onclick = $('pdAbbr').onclick = null; fertig(wert); };
+    $('pdAbbr').onclick = () => ende(null);
+    $('pdOk').onclick = () => {
+      const n = $('pdName').value.trim(), p = $('pdPin').value.trim();
+      if (mitName && !n) { toast('Bitte einen Namen eintragen'); return; }
+      if (mitName && benutzer.some((u) => !u.del && u.name.toLowerCase() === n.toLowerCase() && u.name !== name)) { toast('Diesen Namen gibt es schon'); return; }
+      if (!gueltigePin(p)) { toast('Die PIN muss 4 bis 8 Ziffern haben'); return; }
+      if (p !== $('pdPin2').value.trim()) { toast('Die beiden PINs sind nicht gleich'); return; }
+      ende({ name: n, pin: p });
+    };
+  });
+}
+
+// --- Anmeldebildschirm ---
+let loginWahl = null, fehlversuche = 0, gesperrtBis = 0;
+
+function zeigeLogin() {
+  $('login').hidden = false;
+  document.body.style.overflow = 'hidden';   // Hauptseite dahinter nicht mitscrollen
+  const liste = benutzer.filter((u) => !u.del);
+  const altU0 = konten.u0 && !benutzer.some((u) => u.id === 'u0');   // Daten aus 1.4, aber noch keine PIN
+  $('lgListe').hidden = $('lgPin').hidden = $('lgErst').hidden = true;
+  if (loginWahl && !liste.some((u) => u.id === loginWahl)) loginWahl = null;
+
+  if (loginWahl) {
+    const u = liste.find((x) => x.id === loginWahl);
+    $('lgPinName').textContent = u.name;
+    $('lgPin').hidden = false;
+    $('lgPinFeld').value = '';
+    setTimeout(() => $('lgPinFeld').focus(), 50);
+  } else if (liste.length) {
+    $('lgListe').hidden = false;
+    $('lgNamen').innerHTML = liste.map((u) => `<button data-u="${esc(u.id)}">${esc(u.name)}</button>`).join('');
+    $('lgNamen').querySelectorAll('button').forEach((b) => (b.onclick = () => { loginWahl = b.dataset.u; zeigeLogin(); }));
+  } else {
+    $('lgErst').hidden = false;
+    const laedt = lokal.dbx && !lokal.letzter && syncLaeuft;
+    $('lgErstText').textContent = laedt ? 'Benutzer werden aus Dropbox geladen …'
+      : altU0 ? 'Neu: Die App hat jetzt Benutzer mit PIN. Lege für dich eine PIN fest – deine bisherigen Stunden bleiben erhalten.'
+      : lokal.dbx ? 'Noch kein Benutzer angelegt. Lege dich als ersten Benutzer an – du bist dann Admin und kannst weitere Benutzer anlegen.'
+      : 'Wird die App schon auf einem anderen Gerät benutzt? Dann zuerst unten „Dropbox verbinden“ – die Benutzer werden übernommen. Sonst hier den ersten Benutzer anlegen.';
+    $('lgErstKnopf').hidden = !!laedt;
+    $('lgErstKnopf').textContent = altU0 ? 'PIN festlegen' : 'Ersten Benutzer anlegen';
+  }
+  $('lgDbx').textContent = lokal.dbx ? 'Dropbox verbunden ✓' : 'Dropbox verbinden';
+}
+
+async function ersterBenutzer() {
+  // Mit Dropbox erst nachsehen, ob es dort schon Benutzer gibt – sonst entstünde ein zweiter Admin
+  if (lokal.dbx) {
+    $('lgErstKnopf').disabled = true;
+    lokal.bRev = null;
+    while (syncLaeuft) await new Promise((r) => setTimeout(r, 200));   // laufenden Abgleich abwarten
+    await sync();
+    $('lgErstKnopf').disabled = false;
+    if (syncFehler) { alert('Dropbox ist gerade nicht erreichbar (' + syncFehler + '). Bitte mit Internet noch einmal versuchen.'); return; }
+    if (benutzer.some((u) => !u.del)) { zeigeLogin(); return; }
+  }
+  const altU0 = konten.u0 && !benutzer.some((u) => u.id === 'u0');
+  const vorschlag = altU0 ? (konten.u0.settings || {}).name || '' : '';
+  const r = await pinDialog({ titel: altU0 ? 'PIN festlegen' : 'Ersten Benutzer anlegen', mitName: true, name: vorschlag, knopf: 'Anlegen',
+    hinweis: 'Die PIN brauchst du beim Öffnen der App (außer bei „Angemeldet bleiben“).' });
+  if (!r) return;
+  // Admin übernimmt die alte Datei /stundenzettel.json – nur wenn es hier alte Daten gibt oder Dropbox schon verbunden ist.
+  // Ohne Dropbox bekommt ein neues Gerät eine eigene ID, damit es später keine fremden Daten überschreibt.
+  const u0 = altU0 || lokal.dbx;
+  const u = neuerBenutzer(r.name, r.pin, { id: u0 ? 'u0' : '', admin: true, datei: u0 ? '/stundenzettel.json' : '' });
+  if (altU0 && !konten.u0.settings.name) konten.u0.settings.name = r.name;
+  anmelden(u.id, true);
+}
+
+function pruefeLogin() {
+  const u = benutzer.find((x) => x.id === loginWahl && !x.del);
+  if (!u) return;
+  if (Date.now() < gesperrtBis) { toast(`Zu viele Fehlversuche – bitte ${Math.ceil((gesperrtBis - Date.now()) / 1000)} s warten`); return; }
+  const p = $('lgPinFeld').value.trim();
+  if (pinHash(u.salt, p) !== u.hash) {
+    fehlversuche++;
+    if (fehlversuche >= 5) { gesperrtBis = Date.now() + 30000; fehlversuche = 0; }
+    $('lgPinFeld').value = '';
+    toast('PIN falsch');
+    return;
+  }
+  fehlversuche = 0;
+  anmelden(u.id, $('lgBleiben').checked);
+}
+
+function anmelden(id, bleiben) {
+  const u = benutzer.find((x) => x.id === id);
+  lokal.aktiv = id;
+  lokal.bleiben = !!bleiben;
+  if (!konten[id]) konten[id] = { settings: { name: u.name, email: u.mail || '', cc: '', t: 0 }, months: {} };
+  data = konten[id];
+  data.settings = Object.assign(standardSettings(), data.settings);
+  data.months = data.months || {};
+  stempeln(data);
+  saveLokal();
+  loginWahl = null;
+  $('login').hidden = true;
+  document.body.style.overflow = '';
+  $('settings').hidden = true;
+  cur = { y: heute.getFullYear(), m: heute.getMonth() };
+  render();
+  const h = document.querySelector('#tage li.heute');
+  if (h) h.scrollIntoView({ block: 'center' });
+  else window.scrollTo(0, 0);
+  setzeStatus(lokal.dbx ? 'ok' : 'aus');
+  planeSync(300);
+}
+
+async function abmelden(erzwungen) {
+  if (!lokal.aktiv) return;
+  if (!$('editor').hidden) zeige('editor', false);
+  if (lokal.dbx && km().dirty && !erzwungen) { try { await sync(); } catch (e) { /* bleibt markiert, wird später nachgeholt */ } }
+  saveLokal();
+  lokal.aktiv = null;
+  data = { settings: { name: '', email: '', cc: '' }, months: {} };
+  saveLokal();
+  $('settings').hidden = true;
+  zeigeLogin();
+  if (erzwungen) toast('Dein Benutzer wurde vom Admin entfernt');
+}
+
+// Name im Kopf, sobald es mehr als einen Benutzer gibt
+function zeigeKopfName() {
+  const u = aktiverBenutzer();
+  $('kopfName').textContent = u && benutzer.filter((x) => !x.del).length > 1 ? u.name : '';
+}
+
+// --- Benutzer in den Einstellungen ---
+function zeigeBenutzerTeil() {
+  const ich = aktiverBenutzer();
+  $('kontoTeil').hidden = !ich;
+  if (!ich) return;
+  $('benIch').textContent = ich.name + (ich.admin ? ' (Admin)' : '');
+  $('adminTeil').hidden = !ich.admin;
+  if (!ich.admin) return;
+  $('benListe').innerHTML = benutzer.filter((u) => !u.del).map((u) =>
+    `<li><span>${esc(u.name)}${u.admin ? ' <small>Admin</small>' : ''}</span>` +
+    `<button data-pin="${esc(u.id)}">PIN neu</button>` +
+    (u.id === ich.id ? '' : `<button data-weg="${esc(u.id)}">Entfernen</button>`) + '</li>').join('');
+  $('benListe').querySelectorAll('[data-pin]').forEach((b) => (b.onclick = async () => {
+    const u = benutzer.find((x) => x.id === b.dataset.pin);
+    const r = await pinDialog({ titel: `Neue PIN für ${u.name}`, knopf: 'PIN setzen' });
+    if (r) { setzePin(u.id, r.pin); toast(`PIN für ${u.name} geändert`); }
+  }));
+  $('benListe').querySelectorAll('[data-weg]').forEach((b) => (b.onclick = () => {
+    const u = benutzer.find((x) => x.id === b.dataset.weg);
+    if (!confirm(`${u.name} entfernen? Die Anmeldung ist dann nicht mehr möglich. Die Stunden bleiben in der Dropbox gespeichert.`)) return;
+    u.del = true;
+    u.t = Date.now();
+    lokal.bDirty = true;
+    saveLokal();
+    planeSync(300);
+    zeigeBenutzerTeil();
+    zeigeKopfName();
+  }));
+}
+
 // ---------- Ereignisse ----------
 function init() {
   baueEditor();
@@ -802,7 +1118,7 @@ function init() {
   $('blatt').oninput = (e) => { const mo = monat(); mo.blatt = e.target.value; mo.t = Date.now(); save(); };
 
   document.querySelectorAll('[data-close]').forEach((b) => (b.onclick = () => zeige(b.closest('.backdrop').id, false)));
-  document.querySelectorAll('.backdrop').forEach((bd) => bd.addEventListener('click', (e) => { if (e.target === bd) zeige(bd.id, false); }));
+  document.querySelectorAll('.backdrop:not(.dlg)').forEach((bd) => bd.addEventListener('click', (e) => { if (e.target === bd) zeige(bd.id, false); }));
 
   document.querySelectorAll('[data-set]').forEach((b) => (b.onclick = () => {
     const was = b.dataset.set;
@@ -826,7 +1142,7 @@ function init() {
   $('dbxStart').onclick = dbxAnmelden;
   $('dbxVerbinden').onclick = dbxVerbinden;
   $('dbxTrennen').onclick = dbxTrennen;
-  $('dbxJetzt').onclick = () => { lokal.rev = null; sync(); };
+  $('dbxJetzt').onclick = () => { lokal.bRev = null; if (lokal.aktiv) km().rev = null; sync(); };
   // Aufgeschobenes Neuzeichnen nachholen, sobald nicht mehr getippt wird
   document.addEventListener('focusout', () => setTimeout(() => {
     if (renderOffen && !tipptGerade()) { renderOffen = false; zeichneNeu(); }
@@ -835,9 +1151,31 @@ function init() {
   setInterval(() => { if (!document.hidden) sync(); }, 30000);
   // Web-App (iPhone/PC): Offline-Betrieb. In der Android-App (file://) nicht nötig.
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
-  stempeln(data);
+
+  // Anmeldung
+  $('lgPinFeld').addEventListener('keydown', (e) => { if (e.key === 'Enter') pruefeLogin(); });
+  $('lgOk').onclick = pruefeLogin;
+  $('lgZurueck').onclick = () => { loginWahl = null; zeigeLogin(); };
+  $('lgErstKnopf').onclick = ersterBenutzer;
+  $('lgDbx').onclick = () => { ladeEinstellungen(); zeige('settings', true); };
+  $('abmelden').onclick = () => abmelden(false);
+  $('pinAendern').onclick = async () => {
+    const r = await pinDialog({ titel: 'Eigene PIN ändern', knopf: 'PIN ändern' });
+    if (r) { setzePin(lokal.aktiv, r.pin); toast('PIN geändert'); }
+  };
+  $('benNeu').onclick = async () => {
+    const r = await pinDialog({ titel: 'Neuer Benutzer', mitName: true, knopf: 'Anlegen',
+      hinweis: 'Name und PIN der Person mitteilen. Auf ihrem Gerät: App öffnen, mit Dropbox verbinden, Namen antippen, PIN eingeben.' });
+    if (!r) return;
+    neuerBenutzer(r.name, r.pin);
+    zeigeBenutzerTeil();
+    zeigeKopfName();
+    toast(`${r.name} angelegt`);
+  };
+
   setzeStatus(lokal.dbx ? 'ok' : 'aus');
-  planeSync(500);
+  if (lokal.aktiv && lokal.bleiben && benutzer.some((u) => u.id === lokal.aktiv && !u.del)) anmelden(lokal.aktiv, true);
+  else { lokal.aktiv = null; zeigeLogin(); planeSync(300); }
   $('backupBtn').onclick = backupTeilen;
   $('restoreBtn').onclick = () => $('restoreFile').click();
   $('restoreFile').onchange = (e) => { if (e.target.files[0]) backupLaden(e.target.files[0]); e.target.value = ''; };
@@ -861,10 +1199,6 @@ function init() {
     b.disabled = false;
   };
 
-  render();
-  // zum heutigen Tag scrollen
-  const h = document.querySelector('#tage li.heute');
-  if (h) h.scrollIntoView({ block: 'center' });
 }
 
 // ---------- PDF-Vorschau ----------
