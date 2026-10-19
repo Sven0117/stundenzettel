@@ -1,6 +1,6 @@
 // Offline-Betrieb der Web-App (iPhone/PC). Online wird immer die neueste Version geladen,
 // ohne Netz kommt die zuletzt gespeicherte aus dem Cache.
-const CACHE = 'stundenzettel-v5';
+const CACHE = 'stundenzettel-v6';
 const DATEIEN = ['./', 'index.html', 'app.js', 'logo.js', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -15,7 +15,8 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;   // Dropbox-Anfragen nicht anfassen
   e.respondWith(
-    fetch(e.request, { cache: 'no-cache' }).then((res) => {   // immer beim Server nachfragen, nicht den Browser-Cache (GitHub: 10 min) nehmen
+    // immer beim Server nachfragen, nicht den Browser-Cache (GitHub: 10 min) nehmen; Seitenaufrufe als einfache Anfrage nachbauen
+    fetch(e.request.mode === 'navigate' ? new Request(url.href, { cache: 'no-cache' }) : new Request(e.request, { cache: 'no-cache' })).then((res) => {
       if (res.ok) { const kopie = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, kopie)); }
       return res;
     }).catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match('index.html')))

@@ -1,5 +1,15 @@
 'use strict';
 
+// Seite (index.html) und Programm (app.js) müssen zusammenpassen. Nach einem Update kann der Browser kurz eine
+// alte Seite mit neuem Programm mischen – dann einmal neu laden. Bei jedem Update hier, in index.html und sw.js hochzählen.
+const APP_VERSION = '6';
+if (/^https?:$/.test(location.protocol)) {
+  const seite = (document.querySelector('meta[name="app-version"]') || {}).content;
+  if (seite !== APP_VERSION && sessionStorage.getItem('neuGeladen') !== APP_VERSION) {
+    sessionStorage.setItem('neuGeladen', APP_VERSION);
+    location.reload();
+  }
+}
 // ---------- Konstanten ----------
 const FELDER = [
   { k: 'n',    t: 'Normal',    big: true },
