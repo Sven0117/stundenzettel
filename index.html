@@ -8,60 +8,81 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
-<meta name="theme-color" content="#1f5fae">
+<meta name="theme-color" content="#ffffff">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Stundenzettel">
 <meta name="format-detection" content="telephone=no">
-<meta name="app-version" content="6">
+<meta name="app-version" content="7">
 <style>
+  /* Farben wie die Jansen-PC-Programme (Stillstandsplaner, Montagefortschritt, Aufmaßliste) */
   :root {
-    --bg: #f4f5f7; --card: #fff; --text: #1d1f23; --muted: #6b7079; --line: #e2e4e8;
-    --accent: #1f5fae; --accent-soft: #e6eef9; --we: #ffc000; --we-soft: #fff4d1;
-    --ok: #2e7d32;
+    --bg: #eef0f3; --card: #fff; --text: #1f2937; --head: #1d1d1b; --muted: #6b7280; --line: #cfd4dc; --line2: #e6e9ee;
+    --accent: #00A0A8; --accent-d: #00838a; --accent-soft: #e3f5f6; --we: #f2b705; --we-soft: #fff7e0;
+    --ok: #15803d;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; background: var(--bg); color: var(--text);
-    font: 16px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    font: 16px/1.35 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
   body { padding-bottom: 84px; }
   button { font: inherit; cursor: pointer; }
   input { font: inherit; color: inherit; }
 
-  header { position: sticky; top: 0; z-index: 5; background: var(--accent); color: #fff;
-    display: flex; align-items: center; gap: 4px; padding: 8px 8px; }
-  header .nav { background: none; border: 0; color: #fff; font-size: 28px; width: 44px; height: 44px; border-radius: 22px; }
-  header .nav:active { background: rgba(255,255,255,.15); }
+  /* Kopf: weiß mit Logo, Petrol-Linie; darunter die Monatsleiste */
+  header { position: sticky; top: 0; z-index: 5; background: #fff; color: var(--text); border-bottom: 3px solid var(--accent);
+    box-shadow: 0 2px 8px rgba(0,0,0,.06); padding-top: env(safe-area-inset-top); }
+  .hrow { display: flex; align-items: center; gap: 8px; padding: 7px 10px 6px; }
+  .jlogo { height: 30px; display: block; flex: none; }
+  .apptitel { font-weight: 700; font-size: 17px; color: var(--head); white-space: nowrap; flex: 1; }
+  .apptitel b { color: var(--accent); }
+  .knopf { width: 38px; height: 38px; border: 1px solid var(--line); background: #fff; border-radius: 8px; font-size: 19px;
+    color: var(--text); display: flex; align-items: center; justify-content: center; flex: none; }
+  .knopf:active { border-color: var(--accent); background: var(--accent-soft); }
+  .mrow { display: flex; align-items: center; border-top: 1px solid var(--line2); }
+  .mrow .nav { background: none; border: 0; color: var(--accent); font-size: 26px; font-weight: 700; width: 52px; height: 42px; flex: none; }
+  .mrow .nav:active { background: var(--accent-soft); }
   #monatBox { flex: 1; text-align: center; min-width: 0; }
-  #monat { font-size: 19px; font-weight: 600; }
-  #kopfName { display: block; font-size: 12px; opacity: .8; margin-top: -1px; }
+  #monat { font-size: 17px; font-weight: 700; color: var(--head); }
+  #kopfName { display: block; font-size: 12px; color: var(--muted); margin-top: -2px; }
   #kopfName:empty { display: none; }
-  #settingsBtn { font-size: 22px; }
 
-  .card { background: var(--card); margin: 10px; border-radius: 12px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .card { background: var(--card); margin: 10px; border-radius: 10px; padding: 12px; border: 1px solid var(--line2); }
+  .card.akzent, #zulagen { border-top: 4px solid var(--accent); }
   .meta label { display: block; font-size: 13px; color: var(--muted); }
   .meta input { width: 100%; margin-top: 4px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
-  #summen { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; color: var(--muted); }
-  #summen b { color: var(--text); }
+  /* Summen als Kacheln */
+  .kacheln { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .kachel .z { font-size: 24px; font-weight: 700; color: var(--head); line-height: 1.1; }
+  .kachel .z small { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .kachel .t { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+  .extra { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line2); }
+  .extra:empty { display: none; }
+  .extra b { color: var(--text); }
 
-  #tage { list-style: none; margin: 0 10px; padding: 0; background: var(--card); border-radius: 12px; overflow: hidden;
-    box-shadow: 0 1px 2px rgba(0,0,0,.06); }
-  #tage li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line); min-height: 52px; }
+  #tage { list-style: none; margin: 0 10px; padding: 0; background: var(--card); border-radius: 10px; overflow: hidden;
+    border: 1px solid var(--line2); }
+  #tage li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-top: 1px solid var(--line2); min-height: 54px; cursor: pointer; }
   #tage li:first-child { border-top: 0; }
   #tage li:active { background: var(--accent-soft); }
   #tage li.frei { background: var(--we-soft); }
-  #tage li.heute .tag { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .tag { width: 42px; height: 42px; border-radius: 9px; background: #eef0f3; display: flex; flex-direction: column;
+  #tage li.heute { background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); }
+  #tage li::after { content: '›'; color: #b0b6bf; font-size: 20px; flex: none; }
+  .tag { width: 42px; height: 42px; border-radius: 8px; background: #f3f4f6; display: flex; flex-direction: column;
     align-items: center; justify-content: center; flex: none; }
   .frei .tag { background: var(--we); }
-  .tag b { font-size: 17px; line-height: 1; }
-  .tag small { font-size: 11px; color: #555; }
+  .heute .tag { background: var(--accent); }
+  .heute .tag b, .heute .tag small { color: #fff; }
+  .tag b { font-size: 17px; line-height: 1; color: var(--head); }
+  .tag small { font-size: 11px; color: var(--muted); }
+  .frei .tag small { color: #3b2a00; }
   .inhalt { flex: 1; min-width: 0; }
-  .inhalt .zeile1 { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 15px; }
-  .inhalt .ort { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .inhalt .leer { color: #b0b4ba; font-size: 14px; }
-  .inhalt .ft { color: var(--muted); font-size: 12px; }
-  .pill { background: var(--accent-soft); color: var(--accent); border-radius: 6px; padding: 1px 7px; font-weight: 600; }
-  .pill.urlaub { background: #e3f3e4; color: var(--ok); }
+  .inhalt .zeile1 { display: flex; flex-wrap: wrap; gap: 4px 6px; font-size: 14px; }
+  .inhalt .ort { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .inhalt .leer { color: #b0b6bf; font-size: 14px; }
+  .inhalt .ft { color: var(--muted); font-size: 12px; font-weight: 400; }
+  .pill { background: var(--accent-soft); color: var(--accent-d); border-radius: 6px; padding: 1px 7px; font-weight: 600; }
+  .pill.grau { background: #f3f4f6; color: #374151; }
+  .pill.urlaub { background: #dcfce7; color: var(--ok); }
 
   #zulagen h3 { margin: 0 0 8px; font-size: 15px; }
   .zrow { display: grid; grid-template-columns: 1fr 64px 12px 84px; gap: 6px; align-items: center; margin-bottom: 8px; font-size: 14px; }
@@ -74,10 +95,10 @@
   footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
     background: linear-gradient(transparent, var(--bg) 30%); z-index: 4; }
   footer { display: flex; gap: 8px; }
-  #pdfBtn { flex: 1; padding: 15px; border: 0; border-radius: 12px; background: var(--accent); color: #fff;
-    font-size: 17px; font-weight: 600; box-shadow: 0 2px 6px rgba(31,95,174,.35); }
-  #vorschauBtn { flex: none; padding: 15px 16px; border: 1px solid var(--accent); border-radius: 12px; background: #fff;
-    color: var(--accent); font-size: 16px; font-weight: 600; }
+  #pdfBtn { flex: 1; padding: 14px; border: 0; border-radius: 8px; background: var(--accent); color: #fff;
+    font-size: 16px; font-weight: 600; box-shadow: 0 2px 6px rgba(0,160,168,.3); }
+  #vorschauBtn { flex: none; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: #fff;
+    color: var(--text); font-size: 16px; font-weight: 600; }
   #pdfBtn:active, #vorschauBtn:active { filter: brightness(.9); }
 
   /* Vorschau */
@@ -121,11 +142,15 @@
   .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
   .settings .btnrow .primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
   .sheet h3 { font-size: 15px; margin: 16px 0 8px; padding-top: 12px; border-top: 1px solid var(--line); }
-  header .nav[hidden] { display: none; }
-  header .nav.sync { font-size: 17px; font-weight: 700; width: 36px; height: 36px; background: rgba(255,255,255,.18); flex: none; }
-  header .nav.sync.fehler { background: #ffc000; color: #222; }
-  header .nav.sync.laeuft { animation: dreh 1s linear infinite; }
-  @keyframes dreh { to { transform: rotate(360deg); } }
+  /* Dropbox-Anzeige im Kopf */
+  .sync { font-size: 12px; border-radius: 12px; padding: 4px 10px; border: 1px solid #86efac; background: #f0fdf4; color: var(--ok);
+    white-space: nowrap; flex: none; font-weight: 600; }
+  .sync[hidden] { display: none; }
+  .sync.ok::after { content: ' Dropbox'; }
+  .sync.laeuft { border-color: var(--line); background: #fff; color: var(--muted); }
+  .sync.laeuft::after { content: ' Abgleich …'; }
+  .sync.fehler { color: #fff; background: #dc2626; border-color: #dc2626; }
+  .sync.fehler::after { content: ' Dropbox'; }
 
   #toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); background: #222; color: #fff; padding: 10px 16px;
     border-radius: 20px; font-size: 14px; z-index: 30; opacity: 0; transition: opacity .2s; pointer-events: none; }
@@ -134,9 +159,9 @@
   /* Anmeldung */
   #login { position: fixed; inset: 0; z-index: 8; background: var(--bg); display: flex; flex-direction: column; overflow: auto; }
   #login[hidden], #login [hidden] { display: none; }
-  .lgkopf { background: var(--accent); color: #fff; font-size: 19px; font-weight: 600; text-align: center;
-    padding: calc(16px + env(safe-area-inset-top)) 12px 16px; }
-  .lgbox { background: var(--card); margin: 16px; border-radius: 12px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .lgkopf { background: #fff; border-bottom: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 14px 9px; }
+  .lgbox { background: var(--card); margin: 16px; border-radius: 10px; padding: 16px; border: 1px solid var(--line2); border-top: 4px solid var(--accent); }
   .lgbox h2 { margin: 0 0 14px; font-size: 19px; }
   .lgbox p { margin: 0 0 14px; color: var(--muted); }
   .lgnamen { display: flex; flex-direction: column; gap: 8px; }
@@ -169,17 +194,23 @@
 </head>
 <body>
 <header>
-  <button class="nav" id="prev" aria-label="Vorheriger Monat">‹</button>
-  <div id="monatBox"><div id="monat"></div><small id="kopfName"></small></div>
-  <button class="nav" id="next" aria-label="Nächster Monat">›</button>
-  <button class="nav sync" id="syncBtn" aria-label="Dropbox-Abgleich" hidden></button>
-  <button class="nav" id="settingsBtn" aria-label="Einstellungen">⚙</button>
+  <div class="hrow">
+    <img class="jlogo" alt="Jansen">
+    <span class="apptitel">Stunden<b>zettel</b></span>
+    <button class="sync" id="syncBtn" aria-label="Dropbox-Abgleich" hidden></button>
+    <button class="knopf" id="settingsBtn" aria-label="Einstellungen">⚙</button>
+  </div>
+  <div class="mrow">
+    <button class="nav" id="prev" aria-label="Vorheriger Monat">‹</button>
+    <div id="monatBox"><div id="monat"></div><small id="kopfName"></small></div>
+    <button class="nav" id="next" aria-label="Nächster Monat">›</button>
+  </div>
 </header>
 
+<div class="card akzent"><div id="summen"></div></div>
 <div class="card meta">
   <label>Baustelle (optional)<input id="baustelle" autocomplete="off"></label>
 </div>
-<div class="card"><div id="summen"></div></div>
 
 <ul id="tage"></ul>
 
@@ -271,7 +302,7 @@
 
 <!-- Anmeldung -->
 <div id="login" hidden>
-  <div class="lgkopf">Stundenzettel</div>
+  <div class="lgkopf"><img class="jlogo" alt="Jansen"><span class="apptitel">Stunden<b>zettel</b></span></div>
   <div class="lgbox">
     <div id="lgListe" hidden>
       <h2>Wer bist du?</h2>
@@ -307,6 +338,7 @@
 
 <div id="toast"></div>
 <script src="logo.js"></script>
+<script src="logo-breit.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

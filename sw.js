@@ -1,7 +1,7 @@
 // Offline-Betrieb der Web-App (iPhone/PC). Online wird immer die neueste Version geladen,
 // ohne Netz kommt die zuletzt gespeicherte aus dem Cache.
-const CACHE = 'stundenzettel-v6';
-const DATEIEN = ['./', 'index.html', 'app.js', 'logo.js', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'stundenzettel-v7';
+const DATEIEN = ['./', 'index.html', 'app.js', 'logo-breit.js', 'logo.js', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(DATEIEN.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));

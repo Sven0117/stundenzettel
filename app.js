@@ -2,7 +2,7 @@
 
 // Seite (index.html) und Programm (app.js) müssen zusammenpassen. Nach einem Update kann der Browser kurz eine
 // alte Seite mit neuem Programm mischen – dann einmal neu laden. Bei jedem Update hier, in index.html und sw.js hochzählen.
-const APP_VERSION = '6';
+const APP_VERSION = '7';
 if (/^https?:$/.test(location.protocol)) {
   const seite = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (seite !== APP_VERSION && sessionStorage.getItem('neuGeladen') !== APP_VERSION) {
@@ -183,10 +183,10 @@ function render() {
     if (t.n && !zahl(t.n) && t.n.trim()) teile.push(`<span class="pill urlaub">${esc(t.n)}</span>`);
     else if (zahl(t.n)) teile.push(`<span class="pill">${anzeige(t.n)} h</span>`);
     ['p25', 'p50', 'p70', 'p100', 'p150'].forEach((k) => {
-      if (zahl(t[k])) teile.push(`<span>${anzeige(t[k])} <span class="ft">${k.slice(1)}%</span></span>`);
+      if (zahl(t[k])) teile.push(`<span class="pill grau">${anzeige(t[k])} <span class="ft">· ${k.slice(1)} %</span></span>`);
     });
-    if (zahl(t.f)) teile.push(`<span>${anzeige(t.f)} <span class="ft">Fahrt</span></span>`);
-    if (anzeige(t.a)) teile.push(`<span>${esc(anzeige(t.a))} <span class="ft">Ausl.</span></span>`);
+    if (zahl(t.f)) teile.push(`<span class="pill grau">${anzeige(t.f)} <span class="ft">Fahrt</span></span>`);
+    if (anzeige(t.a)) teile.push(`<span class="pill grau">${esc(anzeige(t.a))} <span class="ft">Ausl.</span></span>`);
     z1.innerHTML = teile.length ? teile.join('') : `<span class="leer">${istFrei ? '–' : 'noch leer'}</span>`;
     inh.appendChild(z1);
     if (t.u) {
@@ -199,13 +199,15 @@ function render() {
     ul.appendChild(li);
   }
 
-  // Summen oben
+  // Summen oben: Kacheln Normal / Fahrt / Arbeitstage, darunter Zuschläge und Auslösung
   const s = summen(mo);
-  const sTeile = [`Normal <b>${fmt(s.n) || 0}</b>`];
-  ['p25', 'p50', 'p70', 'p100', 'p150'].forEach((k) => { if (s[k]) sTeile.push(`${k.slice(1)}% <b>${fmt(s[k])}</b>`); });
-  sTeile.push(`Fahrt <b>${fmt(s.f) || 0}</b>`);
-  if (s.a) sTeile.push(`Auslösung <b>${fmt(s.a)}</b>`);
-  $('summen').innerHTML = sTeile.map((x) => `<span>${x}</span>`).join('');
+  const tage = Object.values(mo.days).filter((t) => zahl(t.n) > 0).length;
+  const kachel = (z, einheit, titel) => `<div class="kachel"><div class="z">${z}${einheit ? `<small> ${einheit}</small>` : ''}</div><div class="t">${titel}</div></div>`;
+  const extra = [];
+  ['p25', 'p50', 'p70', 'p100', 'p150'].forEach((k) => { if (s[k]) extra.push(`${k.slice(1)} % <b>${fmt(s[k])} h</b>`); });
+  if (s.a) extra.push(`Auslösung <b>${fmt(s.a)}</b>`);
+  $('summen').innerHTML = `<div class="kacheln">${kachel(fmt(s.n) || 0, 'h', 'Normal')}${kachel(fmt(s.f) || 0, 'h', 'Fahrt')}${kachel(tage, '', tage === 1 ? 'Tag' : 'Tage')}</div>` +
+    `<div class="extra">${extra.map((x) => `<span>${x}</span>`).join('')}</div>`;
 
   renderZulagen();
 }
@@ -878,7 +880,7 @@ function setzeStatus(s) {
   const b = $('syncBtn');
   b.hidden = s === 'aus';
   b.textContent = { ok: '✓', laeuft: '↻', fehler: '!' }[s] || '';
-  b.className = 'nav sync ' + s;
+  b.className = 'sync ' + s;
   if (!$('settings').hidden) zeigeDropbox();
   if (!$('login').hidden && !loginWahl) zeigeLogin();
 }
@@ -1135,6 +1137,7 @@ function zeigeBenutzerTeil() {
 // ---------- Ereignisse ----------
 function init() {
   baueEditor();
+  document.querySelectorAll('img.jlogo').forEach((i) => (i.src = window.LOGO_BREIT || ''));   // Jansen-Logo im Kopf
 
   $('prev').onclick = () => { if (leererMonat(monat())) delete data.months[key(cur.y, cur.m)]; cur.m--; if (cur.m < 0) { cur.m = 11; cur.y--; } render(); };
   $('next').onclick = () => { if (leererMonat(monat())) delete data.months[key(cur.y, cur.m)]; cur.m++; if (cur.m > 11) { cur.m = 0; cur.y++; } render(); };
