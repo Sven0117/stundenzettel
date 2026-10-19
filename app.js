@@ -331,12 +331,12 @@ window.onAndroidBack = function () {
   return false;
 };
 
-function toast(msg) {
+function toast(msg, ms = 2400) {
   const t = $('toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toast.h);
-  toast.h = setTimeout(() => t.classList.remove('show'), 2400);
+  toast.h = setTimeout(() => t.classList.remove('show'), ms);
 }
 
 // ---------- PDF-Blatt zeichnen (Einheiten wie A4 bei 96 dpi: 794 x 1123) ----------
@@ -515,8 +515,8 @@ async function pdfSenden() {
   const text = `Hallo,\n\nanbei meine Stundenaufstellung für ${MONATE[m]} ${y}.\n\nViele Grüße\n${data.settings.name}`;
   if (window.Android) {
     Android.sharePdf(bytesZuBase64(pdf), name, data.settings.email || '', data.settings.cc || '', betreff, text);
-  } else if (istHandy() && teileImBrowser(pdf, name, 'application/pdf', betreff, text)) {
-    // iPhone: Teilen-Menü ist offen (Mail, WhatsApp …)
+  } else if (istHandy() && kopiereEmpfaenger() && teileImBrowser(pdf, name, 'application/pdf', betreff, text)) {
+    // Handy (Web-App): Teilen-Menü ist offen, die Adresse der Buchhaltung liegt in der Zwischenablage
   } else {
     // PC: PDF herunterladen und eine fertige Mail öffnen, die PDF nur noch anhängen
     ladeHerunter(pdf, name, 'application/pdf');
@@ -530,6 +530,16 @@ async function pdfSenden() {
       toast('PDF ist in „Downloads“ gespeichert');
     }
   }
+}
+
+// Im Teilen-Menü lässt sich kein Empfänger vorgeben -> Adresse der Buchhaltung in die Zwischenablage.
+// Vor navigator.share aufrufen: das verbraucht die Tipp-Berechtigung, die das Kopieren auch braucht. Gibt immer true zurück.
+function kopiereEmpfaenger() {
+  const mail = data.settings.email;
+  if (!mail) return true;
+  const hinweis = (ok) => toast(ok ? `${mail} kopiert – in der Mail bei „An“ einfügen` : `Mail an: ${mail}`, 7000);
+  try { navigator.clipboard.writeText(mail).then(() => hinweis(true), () => hinweis(false)); } catch (e) { hinweis(false); }
+  return true;
 }
 
 // Handy/Tablet (Touch) oder PC mit Maus?
