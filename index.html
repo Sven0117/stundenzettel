@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stundenzettel</title>
+<!-- Web-App (iPhone: Safari > Teilen > Zum Home-Bildschirm, PC: im Browser) -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#1f5fae">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Stundenzettel">
+<meta name="format-detection" content="telephone=no">
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #fff; --text: #1d1f23; --muted: #6b7079; --line: #e2e4e8;
+    --accent: #1f5fae; --accent-soft: #e6eef9; --we: #ffc000; --we-soft: #fff4d1;
+    --ok: #2e7d32;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { padding-bottom: 84px; }
+  button { font: inherit; cursor: pointer; }
+  input { font: inherit; color: inherit; }
+
+  header { position: sticky; top: 0; z-index: 5; background: var(--accent); color: #fff;
+    display: flex; align-items: center; gap: 4px; padding: 8px 8px; }
+  header .nav { background: none; border: 0; color: #fff; font-size: 28px; width: 44px; height: 44px; border-radius: 22px; }
+  header .nav:active { background: rgba(255,255,255,.15); }
+  #monat { flex: 1; text-align: center; font-size: 19px; font-weight: 600; }
+  #settingsBtn { font-size: 22px; }
+
+  .card { background: var(--card); margin: 10px; border-radius: 12px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .meta label { display: block; font-size: 13px; color: var(--muted); }
+  .meta input { width: 100%; margin-top: 4px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  #summen { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; color: var(--muted); }
+  #summen b { color: var(--text); }
+
+  #tage { list-style: none; margin: 0 10px; padding: 0; background: var(--card); border-radius: 12px; overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  #tage li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line); min-height: 52px; }
+  #tage li:first-child { border-top: 0; }
+  #tage li:active { background: var(--accent-soft); }
+  #tage li.frei { background: var(--we-soft); }
+  #tage li.heute .tag { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .tag { width: 42px; height: 42px; border-radius: 9px; background: #eef0f3; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; flex: none; }
+  .frei .tag { background: var(--we); }
+  .tag b { font-size: 17px; line-height: 1; }
+  .tag small { font-size: 11px; color: #555; }
+  .inhalt { flex: 1; min-width: 0; }
+  .inhalt .zeile1 { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 15px; }
+  .inhalt .ort { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .inhalt .leer { color: #b0b4ba; font-size: 14px; }
+  .inhalt .ft { color: var(--muted); font-size: 12px; }
+  .pill { background: var(--accent-soft); color: var(--accent); border-radius: 6px; padding: 1px 7px; font-weight: 600; }
+  .pill.urlaub { background: #e3f3e4; color: var(--ok); }
+
+  #zulagen h3 { margin: 0 0 8px; font-size: 15px; }
+  .zrow { display: grid; grid-template-columns: 1fr 64px 12px 84px; gap: 6px; align-items: center; margin-bottom: 8px; font-size: 14px; }
+  .zrow input, .blatt input { width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 8px; text-align: right; }
+  .zrow .res { grid-column: 1 / -1; text-align: right; font-size: 13px; color: var(--muted); margin-top: -4px; }
+  .blatt { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  .blatt input { width: 90px; }
+  .gesamt { text-align: right; font-weight: 600; margin-top: 8px; }
+
+  footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, var(--bg) 30%); z-index: 4; }
+  footer { display: flex; gap: 8px; }
+  #pdfBtn { flex: 1; padding: 15px; border: 0; border-radius: 12px; background: var(--accent); color: #fff;
+    font-size: 17px; font-weight: 600; box-shadow: 0 2px 6px rgba(31,95,174,.35); }
+  #vorschauBtn { flex: none; padding: 15px 16px; border: 1px solid var(--accent); border-radius: 12px; background: #fff;
+    color: var(--accent); font-size: 16px; font-weight: 600; }
+  #pdfBtn:active, #vorschauBtn:active { filter: brightness(.9); }
+
+  /* Vorschau */
+  #vorschau { position: fixed; inset: 0; z-index: 20; background: #5a5f66; display: flex; flex-direction: column; }
+  #vorschau[hidden] { display: none; }
+  .vkopf { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; background: var(--accent); color: #fff; }
+  #vTitel { font-weight: 600; font-size: 17px; }
+  .vhint { font-size: 12px; opacity: .75; margin-left: auto; }
+  .vkopf .x { background: none; border: 0; color: #fff; font-size: 28px; width: 44px; height: 44px; }
+  .vbody { flex: 1; overflow: auto; -webkit-overflow-scrolling: touch; padding: 10px; }
+  #vBild { display: block; width: 100%; height: auto; margin: 0 auto; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.4); }
+  .vbody.zoom #vBild { width: 260%; max-width: none; }
+  .vfuss { display: flex; gap: 8px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: var(--bg); }
+  .vfuss button { flex: 1; padding: 14px; border-radius: 12px; border: 1px solid var(--line); background: #fff; font-size: 16px; }
+  .vfuss .primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+
+  /* Bottom-Sheets */
+  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 10; display: flex; align-items: flex-end; }
+  .backdrop[hidden] { display: none; }
+  .sheet { background: var(--card); width: 100%; max-height: 92vh; overflow: auto; border-radius: 16px 16px 0 0;
+    padding: 14px 14px calc(14px + env(safe-area-inset-bottom)); }
+  .sheet h2 { margin: 0 0 12px; font-size: 19px; display: flex; align-items: center; gap: 8px; }
+  .sheet h2 .x { margin-left: auto; background: none; border: 0; font-size: 26px; color: var(--muted); width: 40px; height: 40px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .chip { border: 1px solid var(--line); background: #fff; border-radius: 18px; padding: 7px 13px; font-size: 14px; }
+  .chip:active, .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .grid label, .full label { font-size: 12px; color: var(--muted); display: block; }
+  .grid input, .full input { width: 100%; margin-top: 3px; padding: 11px 8px; border: 1px solid var(--line); border-radius: 9px;
+    text-align: center; font-size: 18px; background: #fff; }
+  .grid .big input { font-weight: 600; }
+  .full { margin-top: 10px; }
+  .full input { text-align: left; font-size: 16px; }
+  .sheetnav { display: flex; gap: 8px; margin-top: 14px; }
+  .sheetnav button { flex: 1; padding: 13px; border-radius: 10px; border: 1px solid var(--line); background: #fff; font-size: 15px; }
+  .sheetnav .primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  .settings label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+  .settings input { width: 100%; margin-top: 4px; padding: 11px; border: 1px solid var(--line); border-radius: 9px; font-size: 16px; }
+  .settings .btnrow { display: flex; gap: 8px; margin-top: 6px; }
+  .settings .btnrow button { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: #fff; font-size: 14px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .settings .btnrow .primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  .sheet h3 { font-size: 15px; margin: 16px 0 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+  header .nav[hidden] { display: none; }
+  header .nav.sync { font-size: 17px; font-weight: 700; width: 36px; height: 36px; background: rgba(255,255,255,.18); flex: none; }
+  header .nav.sync.fehler { background: #ffc000; color: #222; }
+  header .nav.sync.laeuft { animation: dreh 1s linear infinite; }
+  @keyframes dreh { to { transform: rotate(360deg); } }
+
+  #toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); background: #222; color: #fff; padding: 10px 16px;
+    border-radius: 20px; font-size: 14px; z-index: 30; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+
+  /* PC/Tablet quer: nicht über die ganze Breite ziehen */
+  @media (min-width: 700px) {
+    body { max-width: 640px; margin: 0 auto; }
+    footer { max-width: 640px; margin: 0 auto; }
+    .sheet { max-width: 640px; margin: 0 auto; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <button class="nav" id="prev" aria-label="Vorheriger Monat">‹</button>
+  <div id="monat"></div>
+  <button class="nav" id="next" aria-label="Nächster Monat">›</button>
+  <button class="nav sync" id="syncBtn" aria-label="Dropbox-Abgleich" hidden></button>
+  <button class="nav" id="settingsBtn" aria-label="Einstellungen">⚙</button>
+</header>
+
+<div class="card meta">
+  <label>Baustelle (optional)<input id="baustelle" autocomplete="off"></label>
+</div>
+<div class="card"><div id="summen"></div></div>
+
+<ul id="tage"></ul>
+
+<div class="card" id="zulagen">
+  <h3>Zulagen &amp; Abschluss</h3>
+  <div id="zrows"></div>
+  <div class="blatt">Blatt <input id="blatt" inputmode="numeric"></div>
+  <div class="gesamt" id="gesamt"></div>
+</div>
+
+<footer>
+  <button id="vorschauBtn">Vorschau</button>
+  <button id="pdfBtn">PDF erstellen &amp; senden</button>
+</footer>
+
+<!-- PDF-Vorschau -->
+<div id="vorschau" hidden>
+  <div class="vkopf">
+    <span id="vTitel">Vorschau</span>
+    <span class="vhint">Tippen = Zoom</span>
+    <button class="x" data-vclose aria-label="Schließen">×</button>
+  </div>
+  <div class="vbody" id="vBody"><img id="vBild" alt="PDF-Vorschau"></div>
+  <div class="vfuss">
+    <button data-vclose>Zurück</button>
+    <button class="primary" id="vSenden">PDF senden</button>
+  </div>
+</div>
+
+<!-- Tag bearbeiten -->
+<div class="backdrop" id="editor" hidden>
+  <div class="sheet">
+    <h2><span id="edTitel"></span><button class="x" data-close aria-label="Schließen">×</button></h2>
+    <div class="chips">
+      <button class="chip" data-set="urlaub">Urlaub</button>
+      <button class="chip" data-set="krank">Krank</button>
+      <button class="chip" data-set="kopie">Wie letzter Arbeitstag</button>
+      <button class="chip" data-set="leer">Leeren</button>
+    </div>
+    <div class="grid" id="edGrid"></div>
+    <div class="full"><label>Übernachtung / Ort<input id="ed_u" list="orte" autocomplete="off"></label></div>
+    <datalist id="orte"></datalist>
+    <div class="sheetnav">
+      <button id="edPrev">‹ Vortag</button>
+      <button id="edNext">Nächster ›</button>
+      <button class="primary" data-close>Fertig</button>
+    </div>
+  </div>
+</div>
+
+<!-- Einstellungen -->
+<div class="backdrop" id="settings" hidden>
+  <div class="sheet settings">
+    <h2>Einstellungen<button class="x" data-close aria-label="Schließen">×</button></h2>
+    <label>Name (steht im PDF)<input id="setName" autocomplete="off"></label>
+    <label>E-Mail an (z. B. Buchhaltung)<input id="setMail" type="email" inputmode="email" autocomplete="off"></label>
+    <label>Kopie (CC, optional)<input id="setCc" type="email" inputmode="email" autocomplete="off"></label>
+    <div class="btnrow">
+      <button id="backupBtn">Backup teilen</button>
+      <button id="restoreBtn">Backup laden</button>
+    </div>
+    <input type="file" id="restoreFile" accept=".json,application/json,text/plain,*/*" hidden>
+    <p class="hint">„Backup teilen“ schickt eine Sicherungsdatei z. B. an dich selbst per Mail.</p>
+
+    <h3>Abgleich mit Dropbox</h3>
+    <div id="dbxAus">
+      <p class="hint" style="margin-top:0">Damit alle deine Handys denselben Stand haben. Auf jedem Handy einmal verbinden.</p>
+      <div class="btnrow"><button class="primary" id="dbxStart">1. Bei Dropbox anmelden</button></div>
+      <label style="margin-top:12px">2. Code von Dropbox hier einfügen<input id="dbxCode" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <div class="btnrow"><button class="primary" id="dbxVerbinden">3. Verbinden</button></div>
+    </div>
+    <div id="dbxAn">
+      <p id="dbxStatus" style="margin:0 0 8px"></p>
+      <div class="btnrow"><button id="dbxJetzt">Jetzt abgleichen</button><button id="dbxTrennen">Trennen</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="logo.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
