@@ -2,7 +2,7 @@
 
 // Seite (index.html) und Programm (app.js) müssen zusammenpassen. Nach einem Update kann der Browser kurz eine
 // alte Seite mit neuem Programm mischen – dann einmal neu laden. Bei jedem Update hier, in index.html und sw.js hochzählen.
-const APP_VERSION = '7';
+const APP_VERSION = '8';
 if (/^https?:$/.test(location.protocol)) {
   const seite = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (seite !== APP_VERSION && sessionStorage.getItem('neuGeladen') !== APP_VERSION) {
@@ -1138,9 +1138,12 @@ function zeigeBenutzerTeil() {
 function init() {
   baueEditor();
   document.querySelectorAll('img.jlogo').forEach((i) => (i.src = window.LOGO_BREIT || ''));   // Jansen-Logo im Kopf
+  if (window.Bewegung) Bewegung.weihnachten(document.querySelector('header'));   // 1.12.–6.1.: Mütze + Schnee
 
-  $('prev').onclick = () => { if (leererMonat(monat())) delete data.months[key(cur.y, cur.m)]; cur.m--; if (cur.m < 0) { cur.m = 11; cur.y--; } render(); };
-  $('next').onclick = () => { if (leererMonat(monat())) delete data.months[key(cur.y, cur.m)]; cur.m++; if (cur.m > 11) { cur.m = 0; cur.y++; } render(); };
+  // Monatswechsel: Inhalt kommt aus der Pfeilrichtung
+  const monatRein = (r) => { if (window.Bewegung) Bewegung.rein([$('monat'), $('summen'), $('tage')], r, 24); };
+  $('prev').onclick = () => { if (leererMonat(monat())) delete data.months[key(cur.y, cur.m)]; cur.m--; if (cur.m < 0) { cur.m = 11; cur.y--; } render(); monatRein(-1); };
+  $('next').onclick = () => { if (leererMonat(monat())) delete data.months[key(cur.y, cur.m)]; cur.m++; if (cur.m > 11) { cur.m = 0; cur.y++; } render(); monatRein(1); };
   $('baustelle').oninput = (e) => { const mo = monat(); mo.baustelle = e.target.value; mo.t = Date.now(); save(); };
   $('blatt').oninput = (e) => { const mo = monat(); mo.blatt = e.target.value; mo.t = Date.now(); save(); };
 
