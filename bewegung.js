@@ -157,6 +157,31 @@
     kopf.prepend(schnee);
   }
 
+  // ---- Android-Zurück-Taste in der Web-App: immer nur einen Schritt zurück, erst auf der Startseite schließen ----
+  // Solange etwas offen ist (Blatt, Vorschau, Unterseite), liegt ein Merk-Eintrag im Browser-Verlauf. Die Zurück-Taste
+  // nimmt ihn weg (popstate) → die App geht einen Schritt zurück und legt, wenn noch etwas offen ist, einen neuen an.
+  // moeglich() = gibt es etwas zum Zurückgehen?  schritt() = einen Schritt zurück (z. B. window.onAndroidBack).
+  function zurueckTaste(moeglich, schritt) {
+    if (window.Android || !window.history || !history.pushState) return;   // in der alten APK macht das die App selbst
+    let ignorieren = false, geplant = false;
+    const abgleich = () => {
+      geplant = false;
+      const offen = moeglich(), merk = !!(history.state && history.state.zurueck);
+      try {
+        if (offen && !merk) history.pushState({ zurueck: 1 }, '');
+        else if (!offen && merk) { ignorieren = true; history.back(); }   // in der App selbst zurück → Merk-Eintrag wieder weg
+      } catch (e) { /* Verlauf nicht nutzbar – dann eben wie bisher */ }
+    };
+    const planen = () => { if (!geplant) { geplant = true; setTimeout(abgleich, 30); } };   // gebündelt; rAF stünde im Hintergrund still
+    window.addEventListener('popstate', () => {
+      if (ignorieren) { ignorieren = false; return; }
+      schritt();
+      planen();
+    });
+    new MutationObserver(planen).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'class'] });
+    planen();
+  }
+
   document.querySelectorAll('.backdrop').forEach(blatt);
-  window.Bewegung = { rein, weihnachten, istWeihnachtszeit };
+  window.Bewegung = { rein, weihnachten, istWeihnachtszeit, zurueckTaste };
 })();

@@ -2,7 +2,7 @@
 
 // Seite (index.html) und Programm (app.js) müssen zusammenpassen. Nach einem Update kann der Browser kurz eine
 // alte Seite mit neuem Programm mischen – dann einmal neu laden. Bei jedem Update hier, in index.html und sw.js hochzählen.
-const APP_VERSION = '8';
+const APP_VERSION = '9';
 if (/^https?:$/.test(location.protocol)) {
   const seite = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (seite !== APP_VERSION && sessionStorage.getItem('neuGeladen') !== APP_VERSION) {
@@ -342,6 +342,8 @@ window.onAndroidBack = function () {
   if (!$('login').hidden && loginWahl) { loginWahl = null; zeigeLogin(); return true; }
   return false;
 };
+// Gibt es etwas, wohin die Zurück-Taste gehen kann? (gleiche Reihenfolge wie oben, ohne etwas zu tun)
+const zurueckMoeglich = () => ['pinDlg', 'vorschau', 'editor', 'settings'].some((id) => !$(id).hidden) || (!$('login').hidden && !!loginWahl);
 
 function toast(msg, ms = 2400) {
   const t = $('toast');
@@ -1139,6 +1141,7 @@ function init() {
   baueEditor();
   document.querySelectorAll('img.jlogo').forEach((i) => (i.src = window.LOGO_BREIT || ''));   // Jansen-Logo im Kopf
   if (window.Bewegung) Bewegung.weihnachten(document.querySelector('header'));   // 1.12.–6.1.: Mütze + Schnee
+  if (window.Bewegung) Bewegung.zurueckTaste(zurueckMoeglich, () => window.onAndroidBack());   // Android-Zurück: Schritt für Schritt
 
   // Monatswechsel: Inhalt kommt aus der Pfeilrichtung
   const monatRein = (r) => { if (window.Bewegung) Bewegung.rein([$('monat'), $('summen'), $('tage')], r, 24); };
